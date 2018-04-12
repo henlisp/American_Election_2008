@@ -1,0 +1,102 @@
+---
+title: "Project 4 - STAT 3022"
+author: '*Henrique Lispector* ID: 4839516 lispe001@umn.edu'
+date: "April 29, 2016"
+output: pdf_document
+---
+
+# Project Description
+Install the library TH.data. Use the data named GlaucomaM in this library. 
+The GlaucomaM data has 196 observations in two classes. 62 variables are 
+derived from a confocal laser scanning image of the optic nerve head, 
+describing its morphology. Observations are from normal and glaucomatous eyes, 
+respectively. Use the help file to know more about the dataset. Your goal is
+to predict whether a person will have glaucoma based on the 62 variables.
+Identify the predictors and the response variable in the dataset. Randomly 
+select 70% of the data as training data and the remaining 30% as test data. 
+Install the package glmnet and use elastic net method on the training data 
+to determine an appropriate model. Then use this model to do predictions on 
+the test dataset. Report which covariates were selected in the model. You do 
+not need to interpret any coefficient estimate. Prediction and variable selection 
+are the main focus of your analysis.
+
+# Loading the data
+```{r}
+library(TH.data)
+GlaucomaM_data <- GlaucomaM
+head(GlaucomaM_data)
+```
+
+# Data Pre-Processing
+```{r}
+summary(GlaucomaM_data)
+```
+No NA's are present in the summary of the data, so we do not need to worry about NA's.
+
+Now let's check if the variables are coded with correct data types:
+```{r}
+lapply(GlaucomaM_data, class)
+```
+All variables are classified correctly.
+
+Let us now create our training and test datasets so we can move on to model fitting:
+
+```{r}
+set.seed(5) #random sample remains fixed in every run in R.
+index_training <- sample(1:nrow(GlaucomaM_data), round(0.7*nrow(GlaucomaM_data)))
+training_data <- GlaucomaM_data[index_training,]
+test_data <- GlaucomaM_data[-index_training,]
+```
+
+# Model Fitting: Elastic Net
+
+Our response variable is "Class", while the predictors are all the other variables.
+
+```{r}
+X <- as.matrix(training_data[,-63])
+Y <- training_data[,63]
+
+library(glmnet)
+
+fit1 <- cv.glmnet(X,Y, family='binomial')
+```
+
+The next command tells which covariates are selected. In addition, it gives the estimated coefficients. In this project, we care more about whether we have a good predictor for glaucoma or not, and not so much how individual variables affect the outcome. So we do not care much about the values of the estimated coefficients.
+```{r}
+coef(fit1, s = "lambda.min")
+```
+The selected covariates in this model were "abrs", "mhcn", "mhci", "phcn", "phci", "varg", "vars", "tms", "tmi", and "rnf".  
+  
+Let us see the performance in the training data first:
+```{r}
+#The function "show" calculates missclassification error, i.e. how many people cases of “normal” or “glaucoma” were wrongly classified:
+show <- function(tt){
+  print(tt)
+  cat(paste("Misclassification rate =", round(1-sum(diag(tt))/sum(tt),2),"\n"))
+  invisible()
+}
+
+nx <- as.matrix(training_data[,-63])
+nrow(training_data)
+nrow(test_data)
+show(with(training_data, table(actual=Y, 
+                                predicted=predict(fit1, newx = nx, s="lambda.min", type="class"))))
+```
+
+Now let us see the performance on the test data:
+```{r}
+nx <- as.matrix(test_data[,-63])
+show(with(test_data, table(actual=test_data[,63],
+                           predicted=predict(fit1, newx = nx, s="lambda.min", type="class"))))
+```
+
+# Conclusion
+
+The misclassification rate overall in the training data is okay, but in the test data the misclassification rate is high. This could suggest:
+
+* The model is overfit.
+* The predictors are not good enough, i.e., we need better predictors.
+* The model is not good enough.
+* There is too much "randomness" in the data.
+
+However, if we consider that the most "dangerous" prediction to be made is predict that a person would not have glaucoma, when actually the person had glaucoma, the results in the training and test data do not differ much. Only 3 people actually had glaucoma when the prediction did not say so in the test data, resulting in a misclassification rate of 0.12 = 3/(22+3), while in the training data this rate was around 0.109 = 8/(65+8).
